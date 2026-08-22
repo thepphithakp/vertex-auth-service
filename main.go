@@ -124,18 +124,16 @@ func initDB() {
 		}
 	}
 
-	// ⚠️ AutoMigrate ยังอยู่ชั่วคราวสำหรับ users / o_auth_identities เท่านั้น
+	// AutoMigrate ถูกถอดออกแล้ว — schema ทั้งหมดจัดการด้วย Flyway
+	// (repo vertex-migrations, schema auth)
 	//
-	// ตาราง RBAC (roles, user_roles, bootstrap_admins) และ column email_verified
-	// จัดการด้วย Flyway ที่ db/migration — จงใจไม่ใส่ไว้ตรงนี้
-	// เพราะ AutoMigrate seed ข้อมูลและทำ data migration ไม่ได้
+	// เหตุผลที่เลิกใช้:
+	//   - รันทุก pod ที่ start → replica ที่ 2, 3 ต้องรอ lock ก่อนถึงจะขึ้น
+	//   - ลบ/rename column ไม่ได้ ทำ data migration ไม่ได้ seed ข้อมูลไม่ได้
+	//   - review ใน PR ไม่ได้ และ schema จริงค่อยๆ ห่างจากสิ่งที่ควบคุมได้
 	//
-	// การถอด AutoMigrate ออกทั้งหมดและย้ายไป schema auth เป็นงานของ Phase 9
-	if err := dbConn.AutoMigrate(&User{}, &OAuthIdentity{}); err != nil {
-		log.Fatal("AutoMigrate ล้มเหลว: ", err)
-	}
-
-	assertRBACSchema()
+	// หน้าที่ของแอปเหลือแค่ "ยืนยันว่า migration รันแล้วจริง" แล้วล้มทันทีถ้ายัง
+	assertSchemaReady()
 }
 
 func initAppleJWKS() {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -148,11 +149,36 @@ func rolesFromClaims(claims map[string]interface{}) []string {
 	return roles
 }
 
-// assertRBACSchema ตรวจว่า Flyway migration รันแล้วก่อนรับ request
+// requiredSchemaVersion คือเวอร์ชัน migration ต่ำสุดที่โค้ดชุดนี้ทำงานได้
 //
-// ถ้าไม่ตรวจ ระบบจะขึ้นได้ตามปกติแล้วไปพังตอน login ครั้งแรก
-// ด้วย error ที่อ่านไม่ออกว่าเกิดจากอะไร
-func assertRBACSchema() {
+// ⚠️ ต้องเพิ่มค่านี้ทุกครั้งที่เพิ่ม V__ ใหม่ที่โค้ดพึ่งพา
+// และห้ามเพิ่มถ้าโค้ดยังไม่ได้ใช้ schema นั้น (จะทำให้ deploy ไม่ผ่านโดยไม่จำเป็น)
+const requiredSchemaVersion = 3
+
+// assertSchemaReady มาแทน AutoMigrate
+//
+// Flyway Job รันก่อน pod ใหม่ขึ้น หน้าที่ของแอปเหลือแค่ยืนยันว่า migration
+// รันครบแล้ว แล้วล้มทันทีถ้ายัง — ปลอดภัยกว่าปล่อยให้ขึ้นแล้วไปพังตอน login แรก
+func assertSchemaReady() {
+	var version string
+	err := dbConn.Raw(`
+		SELECT version FROM flyway_schema_history
+		WHERE success AND version IS NOT NULL
+		ORDER BY installed_rank DESC LIMIT 1`).Scan(&version).Error
+	if err != nil {
+		log.Fatalf("อ่านตาราง flyway_schema_history ไม่ได้ — migration อาจยังไม่เคยรัน "+
+			"(ตรวจ search_path และ Flyway Job): %v", err)
+	}
+	major, convErr := strconv.Atoi(strings.SplitN(strings.TrimSpace(version), ".", 2)[0])
+	if convErr != nil {
+		log.Fatalf("อ่าน schema version %q ไม่ได้: %v", version, convErr)
+	}
+	if major < requiredSchemaVersion {
+		log.Fatalf("ฐานข้อมูลอยู่ที่ V%s แต่โค้ดต้องการ V%d — รัน migration ก่อน",
+			version, requiredSchemaVersion)
+	}
+	log.Printf("schema version V%s (ต้องการอย่างน้อย V%d) ✓", version, requiredSchemaVersion)
+
 	required := []string{"roles", "user_roles", "bootstrap_admins"}
 	for _, table := range required {
 		if !dbConn.Migrator().HasTable(table) {

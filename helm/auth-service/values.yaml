@@ -61,13 +61,26 @@ affinity: {}
 # Kubernetes ขยาย $(VAR) ใน env ที่ประกาศไว้ก่อนหน้าได้
 # จึงประกอบ DATABASE_URL จาก secret ได้โดยไม่ต้องแก้โค้ด
 env:
+  # ⚠️ เลิกใช้ vertex_admin (superuser) แล้ว
+  #    auth_app มีแค่ SELECT/INSERT/UPDATE/DELETE บน schema auth
+  #    สร้าง/ลบตารางไม่ได้ → AutoMigrate กลับมาเองไม่ได้อีก
+  #    และถ้าโดน SQL injection ก็ DROP TABLE ไม่ได้
+  - name: DB_USER
+    valueFrom:
+      secretKeyRef:
+        name: auth-db-app
+        key: username
   - name: DB_PASSWORD
     valueFrom:
       secretKeyRef:
-        name: postgres-secret
-        key: POSTGRES_PASSWORD
+        name: auth-db-app
+        key: password
   - name: DATABASE_URL
-    value: "host=postgres user=vertex_admin password=$(DB_PASSWORD) dbname=vertex port=5432 sslmode=disable"
+    # ⚠️ search_path ต้องมี auth ตั้งแต่ก่อนย้ายตาราง
+    #    schema ที่ยังไม่มีอยู่ใน search_path ถูกข้ามไปเฉยๆ ไม่ error
+    #    ทำให้ deploy ค่านี้ก่อนได้โดยแอปยังหาตารางใน public เจอตามปกติ
+    #    พอย้ายเสร็จแอปจะหาเจอใน auth ทันทีโดยไม่ต้อง restart
+    value: "host=postgres user=$(DB_USER) password=$(DB_PASSWORD) dbname=vertex port=5432 sslmode=disable search_path=auth,public"
 
 # --- Database ---
 db:
