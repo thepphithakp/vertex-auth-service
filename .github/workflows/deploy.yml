@@ -112,6 +112,10 @@ jobs:
       - name: Deploy using Helm
         id: helm_deploy
         run: |
+          # pipefail สำคัญมาก — ถ้าไม่ใส่ exit code ที่ได้จะเป็นของ tee (0 เสมอ)
+          # helm upgrade ล้มเหลวแล้ว job ยังขึ้นเขียว ทำให้ deploy ไม่ขึ้นจริง
+          # โดยไม่มีใครรู้
+          set -euo pipefail
           helm upgrade --install auth-service ./helm/auth-service \
             --namespace vertex \
             --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
@@ -120,9 +124,26 @@ jobs:
 
       - name: Rollout restart if no change
         run: |
+          set -euo pipefail
           if grep -q 'unchanged' helm-output.txt; then
             echo "No changes detected, restarting deployment..."
             kubectl rollout restart deployment auth-service -n vertex
           else
             echo "Changes detected, no restart required."
+          fi
+
+      # ยืนยันว่า deploy ขึ้นจริง ไม่ใช่แค่ helm ไม่ error
+      - name: Verify rollout
+        run: |
+          set -euo pipefail
+          kubectl rollout status deployment/auth-service -n vertex --timeout=180s
+
+          want="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+          got=$(kubectl get deployment auth-service -n vertex \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "ต้องการ: $want"
+          echo "ได้จริง: $got"
+          if [ "$want" != "$got" ]; then
+            echo "::error::image ที่รันอยู่ไม่ตรงกับ commit นี้ — deploy ไม่ขึ้นจริง"
+            exit 1
           fi
