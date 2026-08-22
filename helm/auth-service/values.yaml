@@ -59,3 +59,24 @@ affinity: {}
 env:
   - name: DATABASE_URL
     value: "host=postgres user=vertex_admin password=secretpassword dbname=vertex_pet port=5432 sslmode=disable"
+
+# --- Database ---
+db:
+  host: postgres
+  port: 5432
+  name: vertex_pet
+  sslMode: disable
+
+# --- Flyway migration job ---
+migration:
+  enabled: true
+  image:
+    repository: ghcr.io/thepphithakp/vertex-auth-service-migrations
+    tag: ""
+  credentialsSecret: auth-db-migrator
+  # ⚠️ เปลี่ยนเป็น false หลัง prod baseline สำเร็จแล้ว
+  baselineOnMigrate: true
+  backoffLimit: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }

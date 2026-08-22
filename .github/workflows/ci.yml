@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: vertex
+          POSTGRES_PASSWORD: vertex
+          POSTGRES_DB: vertex_auth
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vertex"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: go vet
+        run: |
+          go vet ./...
+          go vet -tags=integration ./...
+
+      - name: Unit test
+        run: go test -race -count=1 ./...
+
+      # ตรวจว่า migration รันได้บน database เปล่า
+      - name: Flyway migrate
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/db/migration:/flyway/sql/migration:ro" \
+            -v "$PWD/db/codeowned:/flyway/sql/codeowned:ro" \
+            -e FLYWAY_URL=jdbc:postgresql://localhost:5432/vertex_auth \
+            -e FLYWAY_USER=vertex -e FLYWAY_PASSWORD=vertex \
+            -e FLYWAY_SCHEMAS=public -e FLYWAY_DEFAULT_SCHEMA=public \
+            -e FLYWAY_TABLE=flyway_schema_history_auth \
+            -e FLYWAY_LOCATIONS=filesystem:/flyway/sql/migration,filesystem:/flyway/sql/codeowned \
+            -e FLYWAY_BASELINE_ON_MIGRATE=true -e FLYWAY_BASELINE_VERSION=1 \
+            -e FLYWAY_CLEAN_DISABLED=true \
+            flyway/flyway:11-alpine migrate
+
+      # รันซ้ำต้องไม่พัง
+      - name: Flyway migrate ซ้ำ (idempotent)
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/db/migration:/flyway/sql/migration:ro" \
+            -v "$PWD/db/codeowned:/flyway/sql/codeowned:ro" \
+            -e FLYWAY_URL=jdbc:postgresql://localhost:5432/vertex_auth \
+            -e FLYWAY_USER=vertex -e FLYWAY_PASSWORD=vertex \
+            -e FLYWAY_SCHEMAS=public -e FLYWAY_DEFAULT_SCHEMA=public \
+            -e FLYWAY_TABLE=flyway_schema_history_auth \
+            -e FLYWAY_LOCATIONS=filesystem:/flyway/sql/migration,filesystem:/flyway/sql/codeowned \
+            -e FLYWAY_CLEAN_DISABLED=true \
+            flyway/flyway:11-alpine migrate
+
+      - name: Integration test
+        env:
+          TEST_DATABASE_URL: postgres://vertex:vertex@localhost:5432/vertex_auth?sslmode=disable
+        run: go test -race -count=1 -tags=integration ./... -v
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      # 🔐 กันไม่ให้ private key หลุดเข้า repo อีก
+      - name: ตรวจว่าไม่มี private key ใน repo
+        run: |
+          if git ls-files | grep -E 'private.*\.pem$'; then
+            echo "🔴 พบ private key ถูก track ใน git — เอาออกก่อน"
+            exit 1
+          fi
+          echo "ไม่พบ private key ✓"

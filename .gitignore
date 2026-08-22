@@ -1,18 +1,33 @@
 # Binaries
-/pet-service
+/server
+/auth-service
+/vertex-auth-service
+/bin/
 
-# IDE files
+# IDE
 .idea/
+.vscode/
 
-# OS files
+# OS
 .DS_Store
 
-# Patch and tar files
+# Patch / archive
 *.patch
 *.tar
+*.tar.gz
+
+# 🔴 คีย์ลับ — ห้าม commit เด็ดขาด
+# keys/private.pem เคยถูก commit ไว้แล้วและยังอยู่ใน git history
+# การลบตอนนี้หยุดได้แค่ commit ใหม่ — key ตัวนั้นต้องถือว่ารั่วแล้วและต้อง rotate
+/keys/*.pem
+!/keys/public.pem
 
 # Env
 .env
-kubeconfig-vertex.yaml
-server
-*.tar
+.env.*
+!.env.example
+kubeconfig*.yaml
+
+# Coverage
+coverage.out
+coverage.html
