@@ -53,7 +53,7 @@ spec:
             - name: FLYWAY_TABLE
               value: "flyway_schema_history_auth"
             - name: FLYWAY_LOCATIONS
-              value: "filesystem:/flyway/sql/migration,filesystem:/flyway/sql/codeowned"
+              value: "filesystem:/flyway/sql/auth/migration,filesystem:/flyway/sql/auth/codeowned"
             - name: FLYWAY_BASELINE_ON_MIGRATE
               value: {{ .Values.migration.baselineOnMigrate | quote }}
             - name: FLYWAY_BASELINE_VERSION

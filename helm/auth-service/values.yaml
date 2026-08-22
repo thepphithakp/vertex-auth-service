@@ -71,8 +71,10 @@ db:
 migration:
   enabled: true
   image:
-    repository: ghcr.io/thepphithakp/vertex-auth-service-migrations
-    tag: ""
+    # SQL อยู่ใน repo vertex-migrations แยกต่างหาก
+    repository: ghcr.io/thepphithakp/vertex-migrations
+    # ⚠️ ต้องระบุ tag ชัดเจน — ดูเหตุผลใน values ของ pet-service
+    tag: "latest"
   credentialsSecret: auth-db-migrator
   # ⚠️ เปลี่ยนเป็น false หลัง prod baseline สำเร็จแล้ว
   baselineOnMigrate: true

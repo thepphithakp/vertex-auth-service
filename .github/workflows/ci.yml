@@ -28,6 +28,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # SQL อยู่คนละ repo — ดึงมาเพื่อเตรียมฐานข้อมูลให้ integration test
+      - name: Checkout migrations
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/vertex-migrations
+          path: .migrations
+          token: ${{ secrets.MIGRATIONS_REPO_TOKEN || github.token }}
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -50,8 +58,8 @@ jobs:
       - name: Flyway migrate
         run: |
           docker run --rm --network host \
-            -v "$PWD/db/migration:/flyway/sql/migration:ro" \
-            -v "$PWD/db/codeowned:/flyway/sql/codeowned:ro" \
+            -v "$PWD/.migrations/auth/migration:/flyway/sql/migration:ro" \
+            -v "$PWD/.migrations/auth/codeowned:/flyway/sql/codeowned:ro" \
             -e FLYWAY_URL=jdbc:postgresql://localhost:5432/vertex_auth \
             -e FLYWAY_USER=vertex -e FLYWAY_PASSWORD=vertex \
             -e FLYWAY_SCHEMAS=public -e FLYWAY_DEFAULT_SCHEMA=public \
@@ -65,8 +73,8 @@ jobs:
       - name: Flyway migrate ซ้ำ (idempotent)
         run: |
           docker run --rm --network host \
-            -v "$PWD/db/migration:/flyway/sql/migration:ro" \
-            -v "$PWD/db/codeowned:/flyway/sql/codeowned:ro" \
+            -v "$PWD/.migrations/auth/migration:/flyway/sql/migration:ro" \
+            -v "$PWD/.migrations/auth/codeowned:/flyway/sql/codeowned:ro" \
             -e FLYWAY_URL=jdbc:postgresql://localhost:5432/vertex_auth \
             -e FLYWAY_USER=vertex -e FLYWAY_PASSWORD=vertex \
             -e FLYWAY_SCHEMAS=public -e FLYWAY_DEFAULT_SCHEMA=public \

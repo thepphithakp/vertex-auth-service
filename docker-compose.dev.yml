@@ -14,9 +14,10 @@ services:
   flyway:
     image: flyway/flyway:11-alpine
     command: migrate
+    # SQL ย้ายไปอยู่ repo vertex-migrations แล้ว — ต้อง clone ไว้ข้างกัน
     volumes:
-      - ./db/migration:/flyway/sql/migration:ro
-      - ./db/codeowned:/flyway/sql/codeowned:ro
+      - ../vertex-migrations/auth/migration:/flyway/sql/migration:ro
+      - ../vertex-migrations/auth/codeowned:/flyway/sql/codeowned:ro
     environment:
       FLYWAY_URL: jdbc:postgresql://postgres:5432/vertex_auth
       FLYWAY_USER: vertex

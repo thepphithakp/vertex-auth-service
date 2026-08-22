@@ -26,7 +26,8 @@ test-integration: ## integration test (ต้อง make db-up ก่อน)
 tidy: ## go mod tidy
 	go mod tidy && git diff --exit-code go.mod go.sum
 
-db-up: ## ยก postgres + รัน migration
+db-up: ## ยก postgres + รัน migration (ต้อง clone vertex-migrations ไว้ข้างกัน)
+	@test -d ../vertex-migrations || { echo "ไม่พบ ../vertex-migrations"; exit 1; }
 	$(COMPOSE) up -d postgres && $(COMPOSE) run --rm flyway
 
 db-down: ## ปิด + ลบ volume
