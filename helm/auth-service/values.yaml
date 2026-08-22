@@ -56,9 +56,18 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# ⚠️ รหัสผ่านห้ามอยู่ในไฟล์นี้
+#
+# Kubernetes ขยาย $(VAR) ใน env ที่ประกาศไว้ก่อนหน้าได้
+# จึงประกอบ DATABASE_URL จาก secret ได้โดยไม่ต้องแก้โค้ด
 env:
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: postgres-secret
+        key: POSTGRES_PASSWORD
   - name: DATABASE_URL
-    value: "host=postgres user=vertex_admin password=secretpassword dbname=vertex_pet port=5432 sslmode=disable"
+    value: "host=postgres user=vertex_admin password=$(DB_PASSWORD) dbname=vertex_pet port=5432 sslmode=disable"
 
 # --- Database ---
 db:
@@ -102,9 +111,9 @@ jwt:
   # Secret ที่เก็บ private key ที่ใช้เซ็น (คีย์ "private")
   # เว้นว่าง = อ่านจากไฟล์ใน image เหมือนเดิม
   # 🔴 keys/private.pem เคยถูก commit เข้า git จึงต้องถือว่ารั่วแล้ว
-  signingKeySecret: ""
+  signingKeySecret: "jwt-signing-key"
   # Secret ที่เก็บ public key ทุกใบที่ยอมรับ (คีย์ "keys" — PEM ต่อกันได้หลายใบ)
   # ระหว่าง rotate ต้องมีทั้งใบเก่าและใบใหม่
-  publicKeysSecret: ""
+  publicKeysSecret: "jwt-public-keys"
   issuer: ""
   audience: ""
