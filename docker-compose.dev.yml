@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: vertex
+      POSTGRES_PASSWORD: vertex
+      POSTGRES_DB: vertex_auth
+    ports: ["5433:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vertex -d vertex_auth"]
+      interval: 2s
+      retries: 15
+
+  flyway:
+    image: flyway/flyway:11-alpine
+    command: migrate
+    # SQL ย้ายไปอยู่ repo vertex-migrations แล้ว — ต้อง clone ไว้ข้างกัน
+    volumes:
+      - ../vertex-migrations/auth/migration:/flyway/sql/migration:ro
+      - ../vertex-migrations/auth/codeowned:/flyway/sql/codeowned:ro
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/vertex_auth
+      FLYWAY_USER: vertex
+      FLYWAY_PASSWORD: vertex
+      FLYWAY_SCHEMAS: public
+      FLYWAY_DEFAULT_SCHEMA: public
+      FLYWAY_TABLE: flyway_schema_history_auth
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql/migration,filesystem:/flyway/sql/codeowned
+      FLYWAY_BASELINE_ON_MIGRATE: "true"
+      FLYWAY_BASELINE_VERSION: "1"
+      FLYWAY_CLEAN_DISABLED: "true"
+      FLYWAY_CONNECT_RETRIES: "20"
+    depends_on:
+      postgres:
+        condition: service_healthy

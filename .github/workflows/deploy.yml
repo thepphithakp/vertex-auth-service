@@ -11,7 +11,29 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go vet
+        run: go vet ./... && go vet -tags=integration ./...
+      - name: Unit test
+        run: go test -race -count=1 ./...
+      - name: ตรวจว่าไม่มี private key ใน repo
+        run: |
+          if git ls-files | grep -E 'private.*\.pem$'; then
+            echo "🔴 พบ private key ถูก track ใน git"
+            exit 1
+          fi
+
+
   build-and-push:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -1,0 +1,69 @@
+{{- if .Values.migration.enabled }}
+# Flyway migration Job — รันก่อน pod ใหม่ขึ้นเสมอ
+# ถ้า Job fail helm จะหยุด upgrade → pod เก่ายังรับ traffic ต่อไป
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "auth-service.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "auth-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: flyway
+          image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag | default .Values.image.tag }}"
+          args: ["migrate"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: FLYWAY_URL
+              value: "jdbc:postgresql://{{ .Values.db.host }}:{{ .Values.db.port }}/{{ .Values.db.name }}?sslmode={{ .Values.db.sslMode }}"
+            - name: FLYWAY_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.migration.credentialsSecret }}
+                  key: username
+            - name: FLYWAY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.migration.credentialsSecret }}
+                  key: password
+            - name: FLYWAY_SCHEMAS
+              value: "public"
+            - name: FLYWAY_DEFAULT_SCHEMA
+              value: "public"
+            # ตารางแยกต่อ service เพราะยังใช้ database เดียวกันอยู่
+            - name: FLYWAY_TABLE
+              value: "flyway_schema_history_auth"
+            - name: FLYWAY_LOCATIONS
+              value: "filesystem:/flyway/sql/auth/migration,filesystem:/flyway/sql/auth/codeowned"
+            - name: FLYWAY_BASELINE_ON_MIGRATE
+              value: {{ .Values.migration.baselineOnMigrate | quote }}
+            - name: FLYWAY_BASELINE_VERSION
+              value: "1"
+            - name: FLYWAY_VALIDATE_ON_MIGRATE
+              value: "true"
+            - name: FLYWAY_CLEAN_DISABLED
+              value: "true"
+            - name: FLYWAY_CONNECT_RETRIES
+              value: "20"
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+{{- end }}

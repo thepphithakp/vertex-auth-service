@@ -59,3 +59,52 @@ affinity: {}
 env:
   - name: DATABASE_URL
     value: "host=postgres user=vertex_admin password=secretpassword dbname=vertex_pet port=5432 sslmode=disable"
+
+# --- Database ---
+db:
+  host: postgres
+  port: 5432
+  name: vertex_pet
+  sslMode: disable
+
+# --- Flyway migration job ---
+#
+# ⚠️ default = false โดยตั้งใจ
+#
+# migration ย้ายไปอยู่ repo vertex-migrations พร้อม helm chart ของตัวเองแล้ว
+# ที่นั่นรัน Flyway เป็น Job และเป็นเจ้าของ schema จริง
+#
+#   helm upgrade --install vertex-migrations \
+#     ../vertex-migrations/helm/vertex-migrations -n vertex
+#
+# ถ้าเปิดตรงนี้ด้วยจะรัน migration ซ้ำสองที่ ซึ่งไม่พัง (Flyway idempotent)
+# แต่ทำให้ไม่ชัดว่าใครเป็นเจ้าของ schema และ debug ยากเมื่อมีปัญหา
+#
+# เปิดได้ถ้าอยากให้ migration ผูกกับ deploy ของ service แบบ pre-upgrade hook
+migration:
+  enabled: false
+  image:
+    # SQL อยู่ใน repo vertex-migrations แยกต่างหาก
+    repository: ghcr.io/thepphithakp/vertex-migrations
+    # ⚠️ ต้องระบุ tag ชัดเจน — ดูเหตุผลใน values ของ pet-service
+    tag: "latest"
+  credentialsSecret: auth-db-migrator
+  # ⚠️ เปลี่ยนเป็น false หลัง prod baseline สำเร็จแล้ว
+  baselineOnMigrate: true
+  backoffLimit: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+# --- JWT ---
+# ดูขั้นตอน rotate เต็มที่ vertex-pet-service/docs/KEY_ROTATION.md
+jwt:
+  # Secret ที่เก็บ private key ที่ใช้เซ็น (คีย์ "private")
+  # เว้นว่าง = อ่านจากไฟล์ใน image เหมือนเดิม
+  # 🔴 keys/private.pem เคยถูก commit เข้า git จึงต้องถือว่ารั่วแล้ว
+  signingKeySecret: ""
+  # Secret ที่เก็บ public key ทุกใบที่ยอมรับ (คีย์ "keys" — PEM ต่อกันได้หลายใบ)
+  # ระหว่าง rotate ต้องมีทั้งใบเก่าและใบใหม่
+  publicKeysSecret: ""
+  issuer: ""
+  audience: ""
