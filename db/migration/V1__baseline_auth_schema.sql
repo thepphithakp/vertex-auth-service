@@ -26,15 +26,18 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
-CREATE TABLE IF NOT EXISTS oauth_identities (
+-- ⚠️ ชื่อตารางคือ o_auth_identities ไม่ใช่ oauth_identities
+-- GORM แปลงชื่อ struct OAuthIdentity เป็น snake_case ได้แบบนี้ (O|Auth|Identity)
+-- ยืนยันกับ production จริงแล้ว — เขียนผิดจะทำให้ migration ถัดไปล้ม
+CREATE TABLE IF NOT EXISTS o_auth_identities (
     id          uuid NOT NULL DEFAULT gen_random_uuid(),
     user_id     uuid NOT NULL,
     provider    varchar(50)  NOT NULL,
     provider_id varchar(255) NOT NULL,
     created_at  timestamptz,
-    CONSTRAINT oauth_identities_pkey PRIMARY KEY (id)
+    CONSTRAINT o_auth_identities_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_oauth_identities_user_id ON oauth_identities (user_id);
+CREATE INDEX IF NOT EXISTS idx_o_auth_identities_user_id ON o_auth_identities (user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_provider_id
-    ON oauth_identities (provider, provider_id);
+    ON o_auth_identities (provider, provider_id);

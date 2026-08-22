@@ -7,10 +7,10 @@ SELECT 'users' AS tbl, count(*) AS n,
        md5(coalesce(string_agg(md5(u.*::text), ',' ORDER BY u.id), '')) AS row_hash
 FROM users u
 UNION ALL
-SELECT 'oauth_identities', count(*),
+SELECT 'o_auth_identities', count(*),
        md5(coalesce(string_agg(id::text, ',' ORDER BY id), '')),
        md5(coalesce(string_agg(md5(o.*::text), ',' ORDER BY o.id), ''))
-FROM oauth_identities o
+FROM o_auth_identities o
 ORDER BY tbl;
 
 \echo '--- ใครมี role อะไรบ้าง ---'

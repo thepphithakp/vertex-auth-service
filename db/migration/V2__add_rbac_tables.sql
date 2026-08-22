@@ -58,7 +58,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAU
 -- บัญชีที่เคย login ผ่าน Google ถือว่าอีเมลถูกยืนยันแล้ว
 -- (Google เป็นคนยืนยันให้ และ idtoken.Validate ตรวจลายเซ็นแล้ว)
 UPDATE users SET email_verified = true
-WHERE id IN (SELECT user_id FROM oauth_identities WHERE provider = 'google');
+WHERE id IN (SELECT user_id FROM o_auth_identities WHERE provider = 'google');
 
 -- index สำหรับการค้นหาแบบไม่สนตัวพิมพ์ (ใช้ตอน bootstrap admin และ lookup)
 --

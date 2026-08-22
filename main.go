@@ -124,7 +124,7 @@ func initDB() {
 		}
 	}
 
-	// ⚠️ AutoMigrate ยังอยู่ชั่วคราวสำหรับ users / oauth_identities เท่านั้น
+	// ⚠️ AutoMigrate ยังอยู่ชั่วคราวสำหรับ users / o_auth_identities เท่านั้น
 	//
 	// ตาราง RBAC (roles, user_roles, bootstrap_admins) และ column email_verified
 	// จัดการด้วย Flyway ที่ db/migration — จงใจไม่ใส่ไว้ตรงนี้
