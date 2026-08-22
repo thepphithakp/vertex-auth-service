@@ -36,6 +36,28 @@ spec:
               containerPort: 4000
               protocol: TCP
           env:
+            {{- if .Values.jwt.signingKeySecret }}
+            - name: JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.jwt.signingKeySecret }}
+                  key: private
+            {{- end }}
+            {{- if .Values.jwt.publicKeysSecret }}
+            - name: JWT_PUBLIC_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.jwt.publicKeysSecret }}
+                  key: keys
+            {{- end }}
+            {{- if .Values.jwt.issuer }}
+            - name: JWT_ISSUER
+              value: {{ .Values.jwt.issuer | quote }}
+            {{- end }}
+            {{- if .Values.jwt.audience }}
+            - name: JWT_AUDIENCE
+              value: {{ .Values.jwt.audience | quote }}
+            {{- end }}
             - name: PORT
               value: "4000"
             {{- with .Values.env }}

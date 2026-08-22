@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"crypto/rsa"
 	"log"
 	"os"
 	"time"
@@ -49,6 +49,14 @@ var privateKeyBytes []byte
 var publicKeyBytes []byte
 var parsedPrivateKey interface{}
 
+// signingKeyID คือ kid ของคีย์ที่ใช้เซ็นอยู่ตอนนี้ ใส่ลงใน token header
+// ทำให้ผู้ตรวจเลือกคีย์ได้ถูกใบระหว่างช่วง rotate
+var signingKeyID string
+
+// acceptedPublicKeys คือ public key ทุกใบที่ auth-service ยอมรับตอน verify
+// (ใช้ที่ RequireAuth และ /me) — ระหว่าง rotate จะมีสองใบ
+var acceptedPublicKeys []*rsa.PublicKey
+
 // --- DTOs ---
 type SignupRequest struct {
 	Email    string `json:"email"`
@@ -76,12 +84,7 @@ func RequireAuth() fiber.Handler {
 		}
 		tokenString := authHeader[7:]
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-				return nil, fmt.Errorf("unexpected signing method")
-			}
-			return jwt.ParseRSAPublicKeyFromPEM(publicKeyBytes)
-		})
+		token, err := jwt.Parse(tokenString, verificationKeyfunc)
 
 		if err != nil || !token.Valid {
 			return sendError(c, 401, "Invalid or expired token")
@@ -170,21 +173,49 @@ func initRSAKeys() {
 		log.Println("    keys/private.pem เคยถูก commit เข้า git จึงต้องถือว่ารั่วแล้วและต้อง rotate")
 	}
 
-	if jwtPublicKeyPEM != "" {
+	// JWT_PUBLIC_KEYS รับหลายใบ ใช้ระหว่าง rotate เพื่อให้ยังตรวจ token
+	// ที่เซ็นด้วยคีย์เก่าและยังไม่หมดอายุได้
+	switch {
+	case jwtPublicKeysPEM != "":
+		publicKeyBytes = []byte(jwtPublicKeysPEM)
+	case jwtPublicKeyPEM != "":
 		publicKeyBytes = []byte(jwtPublicKeyPEM)
-	} else {
+	default:
 		publicKeyBytes, err = os.ReadFile("keys/public.pem")
 		if err != nil {
 			log.Fatal("อ่าน public key ไม่ได้: ", err)
 		}
 	}
 
-	parsedPrivateKey, err = jwt.ParseRSAPrivateKeyFromPEM(privateKeyBytes)
+	priv, err := jwt.ParseRSAPrivateKeyFromPEM(privateKeyBytes)
 	if err != nil {
 		log.Fatal("parse private key ไม่สำเร็จ: ", err)
 	}
-	if _, err := jwt.ParseRSAPublicKeyFromPEM(publicKeyBytes); err != nil {
+	parsedPrivateKey = priv
+
+	acceptedPublicKeys, err = parsePublicKeys(string(publicKeyBytes))
+	if err != nil {
 		log.Fatal("parse public key ไม่สำเร็จ: ", err)
+	}
+
+	signingKeyID = keyID(&priv.PublicKey)
+	log.Printf("เซ็น token ด้วยคีย์ kid=%s", signingKeyID)
+
+	// คีย์ที่ใช้เซ็นต้องอยู่ในชุดที่ยอมรับด้วย ไม่งั้น token ที่ตัวเองออกจะ verify ไม่ผ่าน
+	found := false
+	for _, k := range acceptedPublicKeys {
+		if keyID(k) == signingKeyID {
+			found = true
+		}
+		log.Printf("ยอมรับ public key kid=%s", keyID(k))
+	}
+	if !found {
+		log.Fatal("public key ที่ตั้งค่าไว้ไม่มีใบที่คู่กับ private key ที่ใช้เซ็น — ตรวจ JWT_PUBLIC_KEYS")
+	}
+	if len(acceptedPublicKeys) > 1 {
+		log.Printf("⚠️  ตั้งค่า public key ไว้ %d ใบ — โหมด rotate เท่านั้น "+
+			"เอาใบเก่าออกเมื่อผ่านไปนานกว่าอายุ token ที่ยาวที่สุด (%s)",
+			len(acceptedPublicKeys), accessTokenTTL)
 	}
 }
 
@@ -236,7 +267,12 @@ func generateToken(user User, roles []string) (string, error) {
 	if jwtAudience != "" {
 		claims["aud"] = jwtAudience
 	}
-	return jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(parsedPrivateKey)
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	// kid ทำให้ผู้ตรวจเลือกคีย์ได้ถูกใบทันทีระหว่างช่วง rotate
+	if signingKeyID != "" {
+		token.Header["kid"] = signingKeyID
+	}
+	return token.SignedString(parsedPrivateKey)
 }
 
 // issueToken รวมขั้นตอนที่ต้องทำทุกครั้งที่ออก token ไว้ที่เดียว
@@ -418,13 +454,7 @@ func handleGetMe(c *fiber.Ctx) error {
 	}
 	tokenString := authHeader[7:]
 
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return jwt.ParseRSAPublicKeyFromPEM(publicKeyBytes)
-	})
-
+	token, err := jwt.Parse(tokenString, verificationKeyfunc)
 	if err != nil || !token.Valid {
 		return sendError(c, 401, "Invalid token")
 	}
@@ -472,8 +502,23 @@ func main() {
 	api.Get("/lookup", RequireAuth(), lookupUser)
 	api.Get("/users", RequireAuth(), requireRole(RoleSuperAdmin), getAllUsers)
 	api.Get("/me", RequireAuth(), handleGetMe)
+	// คืน public key ทุกใบที่ยอมรับ (รูปแบบเดิม: PEM ต่อกัน)
+	// service ปลายทางเอาไปใส่ JWT_PUBLIC_KEYS ได้ตรงๆ
 	api.Get("/public-key", func(c *fiber.Ctx) error {
 		return c.SendString(string(publicKeyBytes))
+	})
+
+	// endpoint สำหรับตรวจตอน rotate ว่าแต่ละ pod เซ็นด้วยคีย์ใบไหนอยู่
+	api.Get("/key-info", func(c *fiber.Ctx) error {
+		accepted := make([]string, 0, len(acceptedPublicKeys))
+		for _, k := range acceptedPublicKeys {
+			accepted = append(accepted, keyID(k))
+		}
+		return c.JSON(fiber.Map{
+			"signingKeyId":   signingKeyID,
+			"acceptedKeyIds": accepted,
+			"tokenTtl":       accessTokenTTL.String(),
+		})
 	})
 
 	// --- Admin ---

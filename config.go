@@ -24,4 +24,7 @@ var (
 	//    การใส่ทางให้อ่านจาก env คือเงื่อนไขที่ทำให้ rotate ได้จริง
 	jwtPrivateKeyPEM = os.Getenv("JWT_PRIVATE_KEY")
 	jwtPublicKeyPEM  = os.Getenv("JWT_PUBLIC_KEY")
+
+	// jwtPublicKeysPEM รับ PEM หลายบล็อกต่อกัน ใช้ระหว่าง rotate key
+	jwtPublicKeysPEM = os.Getenv("JWT_PUBLIC_KEYS")
 )
