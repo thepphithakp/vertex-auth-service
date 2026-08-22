@@ -68,8 +68,21 @@ db:
   sslMode: disable
 
 # --- Flyway migration job ---
+#
+# ⚠️ default = false โดยตั้งใจ
+#
+# migration ย้ายไปอยู่ repo vertex-migrations พร้อม helm chart ของตัวเองแล้ว
+# ที่นั่นรัน Flyway เป็น Job และเป็นเจ้าของ schema จริง
+#
+#   helm upgrade --install vertex-migrations \
+#     ../vertex-migrations/helm/vertex-migrations -n vertex
+#
+# ถ้าเปิดตรงนี้ด้วยจะรัน migration ซ้ำสองที่ ซึ่งไม่พัง (Flyway idempotent)
+# แต่ทำให้ไม่ชัดว่าใครเป็นเจ้าของ schema และ debug ยากเมื่อมีปัญหา
+#
+# เปิดได้ถ้าอยากให้ migration ผูกกับ deploy ของ service แบบ pre-upgrade hook
 migration:
-  enabled: true
+  enabled: false
   image:
     # SQL อยู่ใน repo vertex-migrations แยกต่างหาก
     repository: ghcr.io/thepphithakp/vertex-migrations
