@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/MicahParks/keyfunc/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
@@ -43,8 +42,6 @@ type OAuthIdentity struct {
 // --- Globals ---
 var DB *gorm.Config
 var dbConn *gorm.DB
-var jwks *keyfunc.JWKS
-var rsaPrivateKey *jwt.Token
 var privateKeyBytes []byte
 var publicKeyBytes []byte
 var parsedPrivateKey interface{}
@@ -136,21 +133,13 @@ func initDB() {
 	assertSchemaReady()
 }
 
-func initAppleJWKS() {
-	var err error
-	jwks, err = keyfunc.Get("https://appleid.apple.com/auth/keys", keyfunc.Options{
-		RefreshErrorHandler: func(err error) {
-			log.Printf("There was an error with the jwt.Keyfunc\nError: %s", err.Error())
-		},
-		RefreshInterval:   time.Hour,
-		RefreshRateLimit:  time.Minute * 5,
-		RefreshTimeout:    time.Second * 10,
-		RefreshUnknownKID: true,
-	})
-	if err != nil {
-		log.Fatalf("Failed to create JWKS from resource at the given URL.\nError: %s", err.Error())
-	}
-}
+// หมายเหตุ: เคยมี initAppleJWKS() ที่ดึง JWKS ของ Apple ตอน start
+//
+// ลบออกเพราะไม่มี endpoint ไหนตรวจ token ของ Apple เลย (มีแค่ /google
+// ซึ่งใช้ idtoken.Validate) ค่าที่ดึงมาถูกเขียนลงตัวแปร global แล้วไม่เคยถูกอ่าน
+// แต่มันทำ network call ตอน start และ log.Fatalf ถ้าล้ม
+// ผลคือ auth-service สตาร์ตไม่ขึ้นเลยถ้า appleid.apple.com เข้าไม่ได้
+// โดยไม่ได้อะไรตอบแทน
 
 // initRSAKeys อ่านคีย์จาก env ก่อน แล้วค่อย fallback ไปอ่านไฟล์ใน image
 //
@@ -220,8 +209,8 @@ func initRSAKeys() {
 func sendError(c *fiber.Ctx, status int, message string) error {
 	reqID := c.Get("X-Request-Id")
 	if reqID == "" {
-		if val := c.Locals("requestid"); val != nil {
-			reqID = val.(string)
+		if val, ok := c.Locals("requestid").(string); ok {
+			reqID = val
 		}
 	}
 	return c.Status(status).JSON(fiber.Map{
@@ -479,7 +468,6 @@ func handleGetMe(c *fiber.Ctx) error {
 
 func main() {
 	initDB()
-	initAppleJWKS()
 	initRSAKeys()
 
 	app := fiber.New(fiber.Config{

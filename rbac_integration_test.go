@@ -3,6 +3,10 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"testing"
 	"time"
@@ -131,6 +135,7 @@ func TestRolesForUser_DefaultsToUser(t *testing.T) {
 // TestGenerateToken ยืนยันว่า claim ครบและ token เดิมยังอ่านได้
 func TestGenerateToken(t *testing.T) {
 	setupTestDB(t)
+	useEphemeralKeys(t)
 	initRSAKeys()
 
 	u := User{ID: uuid.New(), Email: "a@b.c", FullName: "ทดสอบ"}
@@ -179,4 +184,40 @@ func TestCountSuperAdmins(t *testing.T) {
 	if after != before+1 {
 		t.Fatalf("นับได้ %d ต้องการ %d", after, before+1)
 	}
+}
+
+// useEphemeralKeys สร้างคู่กุญแจใหม่ให้เทสต์ใช้ แล้วคืนค่าเดิมเมื่อเทสต์จบ
+//
+// เดิมเทสต์เรียก initRSAKeys() ตรงๆ ซึ่ง fallback ไปอ่าน keys/private.pem
+// พอคีย์ใบนั้นถูก revoke และลบออกจาก repo (2026-08-22) initRSAKeys จึง
+// log.Fatal ทำให้ทั้ง package ล้มทั้งที่เทสต์ตัวอื่นผ่านหมด
+//
+// เทสต์ไม่ควรต้องมีคีย์จริงบนดิสก์อยู่แล้ว — สิ่งที่ต้องพิสูจน์คือ
+// token ที่เซ็นแล้ว verify กลับได้ ไม่ใช่ว่าคีย์ใบไหนถูกใช้
+func useEphemeralKeys(t *testing.T) {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("สร้างคีย์ไม่สำเร็จ: %v", err)
+	}
+
+	privPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatalf("แปลง public key ไม่สำเร็จ: %v", err)
+	}
+	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+
+	oldPriv, oldPubs, oldPub := jwtPrivateKeyPEM, jwtPublicKeysPEM, jwtPublicKeyPEM
+	t.Cleanup(func() {
+		jwtPrivateKeyPEM, jwtPublicKeysPEM, jwtPublicKeyPEM = oldPriv, oldPubs, oldPub
+	})
+
+	jwtPrivateKeyPEM = string(privPEM)
+	jwtPublicKeysPEM = string(pubPEM)
+	jwtPublicKeyPEM = ""
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -105,7 +106,16 @@ func handleAdminUpdateRoles(c *fiber.Ctx) error {
 		return sendError(c, 400, "user id ไม่ถูกต้อง")
 	}
 
-	actorID, _ := uuid.Parse(c.Locals("userId").(string))
+	// ⚠️ ห้ามกลืน error ตรงนี้
+	//
+	// actorID ถูกใช้ในเช็คกันลดสิทธิ์ตัวเองข้างล่าง (targetID == actorID)
+	// ถ้า parse ไม่ได้แล้วปล่อยผ่าน actorID จะเป็น uuid.Nil ซึ่งไม่มีวัน
+	// ตรงกับ targetID ของใครเลย → SUPER_ADMIN ถอด SUPER_ADMIN ของตัวเองได้
+	// และอาจไม่เหลือใครที่แก้กลับได้
+	actorID, err := actorIDFrom(c)
+	if err != nil {
+		return sendError(c, 401, "ระบุตัวตนผู้เรียกไม่ได้")
+	}
 
 	var req updateRolesRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -184,4 +194,16 @@ func handleAdminUpdateRoles(c *fiber.Ctx) error {
 		EmailVerified: target.EmailVerified,
 		Roles:         rolesForUser(dbConn, targetID),
 	})
+}
+
+// actorIDFrom ดึง user id ของผู้เรียกจาก context ที่ RequireAuth ใส่ไว้
+//
+// แยกออกมาเพื่อไม่ให้ต้องเขียน type assertion แบบไม่เช็คซ้ำหลายที่
+// (assertion ที่ไม่เช็คจะ panic ทั้ง process ถ้า middleware เปลี่ยนรูปแบบค่า)
+func actorIDFrom(c *fiber.Ctx) (uuid.UUID, error) {
+	raw, ok := c.Locals("userId").(string)
+	if !ok || raw == "" {
+		return uuid.Nil, fmt.Errorf("ไม่มี userId ใน context")
+	}
+	return uuid.Parse(raw)
 }
