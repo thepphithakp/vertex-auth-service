@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 	"time"
@@ -42,7 +43,15 @@ func NewAccessLog() fiber.Handler {
 		start := time.Now()
 		err := c.Next()
 
+		// 🔴 อ่าน c.Response().StatusCode() ตรงๆ ไม่พอเมื่อ handler
+		// return error object แทนที่จะเรียก c.Status().JSON() เอง —
+		// ErrorHandler กลางทำงาน "หลังจาก" middleware chain นี้ unwind
+		// ไปแล้ว ไม่ใช่ระหว่าง c.Next() (สำคัญมากสำหรับ route ที่ไม่
+		// match เลย ซึ่งเป็นสาเหตุที่ทำให้ VT-69 เข้าใจผิดว่า 500)
 		status := c.Response().StatusCode()
+		if err != nil {
+			status = resolveErrStatus(err)
+		}
 
 		// endpoint คือ route pattern ที่ลงทะเบียนไว้ (รวม group prefix
 		// เช่น "/api/v1/auth/login") ไม่ใช่แค่ path ที่ผู้ใช้ยิงมา
@@ -97,4 +106,14 @@ func toAttrs(vals []any) []slog.Attr {
 		}
 	}
 	return out
+}
+
+// resolveErrStatus เดา HTTP status ที่ ErrorHandler จะกำหนดให้ error นี้
+// ต้องตรงกับ logic ใน main.go ทุกประการ
+func resolveErrStatus(err error) int {
+	var fe *fiber.Error
+	if errors.As(err, &fe) {
+		return fe.Code
+	}
+	return fiber.StatusInternalServerError
 }
