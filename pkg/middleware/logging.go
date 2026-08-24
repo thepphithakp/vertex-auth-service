@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -53,15 +55,17 @@ func NewAccessLog() fiber.Handler {
 			status = resolveErrStatus(err)
 		}
 
-		// endpoint คือ route pattern ที่ลงทะเบียนไว้ (รวม group prefix
-		// เช่น "/api/v1/auth/login") ไม่ใช่แค่ path ที่ผู้ใช้ยิงมา
-		// ถ้าไม่ match route ไหนเลย c.Route() จะเป็น nil จึง fallback
-		// ไปที่ c.Path() แทน — กรณีนี้เกิดขึ้นบ่อยกว่าที่คิดเพราะเป็น
-		// ทาง distinguish 404 (ไม่ match route) ออกจาก endpoint จริงที่ error
-		endpoint := c.Path()
-		if r := c.Route(); r != nil && r.Path != "" {
-			endpoint = r.Path
-		}
+		// endpoint คือ path จริงที่แทน UUID ด้วย :id แล้ว
+		//
+		// ไม่ใช้ c.Route().Path เพราะกลุ่ม route ที่มี auth middleware
+		// ผูกไว้ระดับ group (เช่น /api/v1/auth/admin) พอถูกปฏิเสธก่อน
+		// ถึง route ย่อย Fiber ยังไม่ resolve ไปถึง route เต็ม ได้แค่
+		// path ของ group เท่านั้น — รายละเอียดเดียวกับที่เจอใน
+		// pet-service (ดู logging.go ของ pet-service comment เต็ม)
+		//
+		// auth-service เองไม่มี UUID ในเส้นทางตอนนี้ แต่ normalize ไว้
+		// เพื่อความสม่ำเสมอกับอีกสอง service และเผื่ออนาคต
+		endpoint := normalizeEndpoint(c.Path())
 
 		attrs := []any{
 			// เวลาที่เกิดจริง มีวันที่และ offset ครบ ต่างจาก
@@ -116,4 +120,19 @@ func resolveErrStatus(err error) int {
 		return fe.Code
 	}
 	return fiber.StatusInternalServerError
+}
+
+// uuidSegment จับ UUID มาตรฐาน (8-4-4-4-12 hex) ไม่สนตัวพิมพ์ใหญ่เล็ก
+var uuidSegment = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// normalizeEndpoint แทนที่ segment ที่เป็น UUID ด้วย ":id"
+// ทำงานอิสระจากการ resolve route ของ Fiber โดยสิ้นเชิง
+func normalizeEndpoint(path string) string {
+	parts := strings.Split(path, "/")
+	for i, p := range parts {
+		if uuidSegment.MatchString(p) {
+			parts[i] = ":id"
+		}
+	}
+	return strings.Join(parts, "/")
 }
