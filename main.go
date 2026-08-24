@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -16,6 +15,8 @@ import (
 	"google.golang.org/api/idtoken"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+
+	"vertex-auth-service/pkg/middleware"
 )
 
 // --- Models ---
@@ -467,19 +468,38 @@ func handleGetMe(c *fiber.Ctx) error {
 }
 
 func main() {
+	// ต้องเรียกก่อนอะไรทั้งหมด ไม่งั้น slog ใช้ text handler ของ Go
+	// เป็น default แล้ว NewAccessLog ที่เขียนด้วย slog จะไม่ได้เป็น JSON
+	middleware.SetupLogger(os.Getenv("LOG_LEVEL"))
+
 	initDB()
 	initRSAKeys()
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
-			return sendError(c, 500, err.Error())
+			// 🔴 ก่อนแก้: ทุก error ตอบ 500 หมด รวมถึง route ที่ไม่ตรงกับ
+			// อะไรเลย (404) เพราะ Fiber ส่ง error เข้า ErrorHandler
+			// นี้แม้แต่ตอน "ไม่เจอ route ที่ match" (ผ่าน fiber.ErrNotFound)
+			// และโค้ดเดิมไม่ได้แยกว่า error เป็นชนิดไหน ยัดเป็น 500 ทั้งหมด
+			//
+			// ผลคือ metric/log ของ 4xx จริงกลายเป็น 5xx ปลอม ทำให้
+			// error rate ที่วัดได้สูงเกินจริง และแยกไม่ออกว่า client
+			// เรียกผิด (4xx) หรือ service พังจริง (5xx)
+			//
+			// เจอระหว่างตรวจสอบ VT-69 — ตอนนั้นยิง /login โดยไม่มี prefix
+			// /api/v1/auth (ผิด endpoint) แล้วได้ 500 ทำให้เข้าใจผิดว่า
+			// /login จริงพัง ทั้งที่ /api/v1/auth/login ทำงานปกติ (401
+			// ตามที่ควรเป็นเมื่อ credential ผิด) — แก้ทั้งสองเรื่องพร้อมกัน
+			code := fiber.StatusInternalServerError
+			if fe, ok := err.(*fiber.Error); ok {
+				code = fe.Code
+			}
+			return sendError(c, code, err.Error())
 		},
 	})
 
 	app.Use(requestid.New())
-	app.Use(logger.New(logger.Config{
-		Format: `{"time":"${time}","requestId":"${locals:requestid}","status":${status},"method":"${method}","path":"${path}","latency":"${latency}"}` + "\n",
-	}))
+	app.Use(middleware.NewAccessLog())
 
 	api := app.Group("/api/v1/auth")
 	api.Post("/signup", handleSignup)
