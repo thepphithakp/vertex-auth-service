@@ -44,12 +44,20 @@ ingress:
           pathType: ImplementationSpecific
   tls: []
 
+# signup/login เป็นงาน CPU ล้วน (bcrypt cost 10 + เซ็น JWT ด้วย RSA)
+# ต้องได้ CPU เต็มคอร์ตอนทำ ไม่งั้นจะโดน throttle
+#
+# ค่าเดิม limits.cpu: 100m ทำให้ login ใช้เวลา 1.5–2.1 วินาที
+# ขณะที่ /auth/me บน pod เดียวกันใช้ 40ms — ต่างกันที่มีงาน CPU หรือไม่เท่านั้น
+#
+# ยังคง limit ไว้ (ไม่ปลดทิ้งแบบ ADR-026) เพราะ /login เปิดออกเน็ตและแพงโดยตั้งใจ
+# ถ้าไม่มีเพดาน การยิง login รัวๆ จะกินซีพียูทั้งเครื่องจนบริการอื่นตายตาม
 resources:
   limits:
-    cpu: 100m
+    cpu: 1000m
     memory: 128Mi
   requests:
-    cpu: 10m
+    cpu: 100m
     memory: 64Mi
 
 nodeSelector: {}
