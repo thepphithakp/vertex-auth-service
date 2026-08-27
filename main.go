@@ -499,6 +499,8 @@ func main() {
 	})
 
 	app.Use(requestid.New())
+	// metrics มาก่อน access log เพื่อให้นับ request ที่ถูกปฏิเสธตั้งแต่ต้นทางด้วย
+	app.Use(middleware.NewMetrics())
 	app.Use(middleware.NewAccessLog())
 
 	api := app.Group("/api/v1/auth")
@@ -544,6 +546,9 @@ func main() {
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.SendString("OK")
 	})
+	// ให้ Prometheus มาดึง — เข้าถึงจากนอกคลัสเตอร์ไม่ได้
+	// เพราะ ingress route เฉพาะ prefix /api/v1 เข้ามา
+	app.Get("/metrics", middleware.MetricsHandler())
 
 	log.Fatal(app.Listen(":4000"))
 }
