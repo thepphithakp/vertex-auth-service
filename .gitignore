@@ -17,8 +17,11 @@
 *.tar.gz
 
 # 🔴 คีย์ลับ — ห้าม commit เด็ดขาด
-# keys/private.pem เคยถูก commit ไว้แล้วและยังอยู่ใน git history
-# การลบตอนนี้หยุดได้แค่ commit ใหม่ — key ตัวนั้นต้องถือว่ารั่วแล้วและต้อง rotate
+# keys/private.pem เคยถูก commit และ rotate ไปแล้ว (ดู docs ของ pet-service)
+# ตรวจ 27 ส.ค. 2026 แล้วว่าไม่เหลืออยู่ใน history — เหลือแต่ public.pem
+#
+# gitignore กันได้แค่ "ชื่อไฟล์" · รหัสผ่านที่ฝังอยู่ในเนื้อของ .sh ธรรมดา
+# กันไม่ได้เลย ซึ่งเป็นวิธีที่หลุดจริงมาแล้ว — ตัวที่กันคือ scripts/check-secrets.sh
 /keys/*.pem
 !/keys/public.pem
 

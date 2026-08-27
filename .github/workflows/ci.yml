@@ -28,6 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: ตรวจว่าไม่มีความลับหลุดเข้า repo
+        run: ./scripts/check-secrets.sh
+
       # SQL อยู่คนละ repo — ดึงมาเพื่อเตรียมฐานข้อมูลให้ integration test
       - name: Checkout migrations
         uses: actions/checkout@v4
