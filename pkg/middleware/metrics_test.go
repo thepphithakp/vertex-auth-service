@@ -17,6 +17,35 @@ func newMetricsApp() *fiber.App {
 	return app
 }
 
+func addDeleteRoute(app *fiber.App) *fiber.App {
+	app.Delete("/api/v1/auth/users/:id", func(c *fiber.Ctx) error { return c.SendStatus(204) })
+	return app
+}
+
+// regression ของบั๊กที่ทำให้ /metrics ของ pet-service ตอบ 500 บน production
+// มาตลอดโดยไม่มีใครรู้ — Fiber คืน string ที่ชี้ไป buffer ที่ถูกใช้ซ้ำ
+func TestMethodLabelIsNotCorruptedByBufferReuse(t *testing.T) {
+	app := addDeleteRoute(newMetricsApp())
+	for i := 0; i < 20; i++ {
+		if _, err := app.Test(httptest.NewRequest("DELETE", "/api/v1/auth/users/abc", nil)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := app.Test(httptest.NewRequest("GET", "/api/v1/auth/users/abc", nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	body := scrapeMetrics(t, app)
+	for _, want := range []string{`method="GET"`, `method="DELETE"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("ไม่พบ %s ใน /metrics", want)
+		}
+	}
+	if strings.Contains(body, `method="GETETE"`) {
+		t.Error(`label ของ method เพี้ยนเป็น GETETE`)
+	}
+}
+
 func scrapeMetrics(t *testing.T, app *fiber.App) string {
 	t.Helper()
 	resp, err := app.Test(httptest.NewRequest("GET", "/metrics", nil))
@@ -24,6 +53,9 @@ func scrapeMetrics(t *testing.T, app *fiber.App) string {
 		t.Fatal(err)
 	}
 	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("/metrics ตอบ %d ไม่ใช่ 200:\n%s", resp.StatusCode, string(b))
+	}
 	return string(b)
 }
 

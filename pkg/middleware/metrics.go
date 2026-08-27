@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/adaptor/v2"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -57,11 +58,22 @@ func NewMetrics() fiber.Handler {
 			return c.Next()
 		}
 
+		// ⚠️ ต้องคัดลอก string ที่ได้จาก c.Method() ก่อนเสมอ
+		//
+		// Fiber คืน string ที่ชี้ไป buffer ของ request ซึ่งถูกใช้ซ้ำกับ request
+		// ถัดไป ส่วน Prometheus เก็บ string นั้นไว้เป็น key ตลอดอายุ process
+		// พอ buffer ถูกเขียนทับ key ก็เปลี่ยนตาม
+		//
+		// เกิดขึ้นจริงกับ pet-service: label กลายเป็น "GETETE" (GET ทับด้วยเศษ
+		// ของ DELETE) แล้ว label ซ้ำจน /metrics ตอบ 500 ทั้ง endpoint
+		// Prometheus จึง scrape ไม่ผ่านเลยโดยที่ ServiceMonitor ยังเขียวอยู่
+		method := utils.CopyString(c.Method())
+
 		httpRequestsInFlight.Inc()
 		defer httpRequestsInFlight.Dec()
 
 		timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
-			httpRequestDuration.WithLabelValues(c.Method(), routeLabel(c)).Observe(v)
+			httpRequestDuration.WithLabelValues(method, routeLabel(c)).Observe(v)
 		}))
 
 		err := c.Next()
@@ -74,7 +86,7 @@ func NewMetrics() fiber.Handler {
 				status = fe.Code
 			}
 		}
-		httpRequestsTotal.WithLabelValues(c.Method(), routeLabel(c), strconv.Itoa(status)).Inc()
+		httpRequestsTotal.WithLabelValues(method, routeLabel(c), strconv.Itoa(status)).Inc()
 		timer.ObserveDuration()
 
 		return err
