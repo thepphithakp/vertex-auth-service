@@ -32,17 +32,41 @@ service:
   type: ClusterIP
   port: 4000
 
-ingress:
+# --- Gateway API ----------------------------------------------------------
+# block `ingress:` เดิมถูกลบทิ้งแล้ว — ไม่มี template ไหนอ่านมันเลยตั้งแต่แรก
+# (ค่าที่เหลือเป็น chart-example.local ที่ helm create แถมมา)
+#
+# ⚠️ ยังปิดอยู่โดยตั้งใจ — ตอนนี้ infra/gateway/02-httproute-auth.yaml เป็นเจ้าของ route
+#    ของ auth-service อยู่ เปิดตรงนี้พร้อมกันจะได้ HTTPRoute สองตัวชี้ path เดียวกัน
+#
+# ลำดับที่ถูกต้องตอนย้ายมาให้ chart เป็นเจ้าของ:
+#   1. kubectl apply -f infra/gateway/05-rbac-httproute.yaml   (สิทธิ์ของ CD)
+#   2. kubectl delete -f infra/gateway/02-httproute-auth.yaml
+#   3. เปลี่ยน enabled เป็น true แล้ว deploy
+httpRoute:
   enabled: false
-  className: ""
-  annotations: {}
-    # kubernetes.io/ingress.class: nginx
-  hosts:
-    - host: chart-example.local
-      paths:
-        - path: /
-          pathType: ImplementationSpecific
-  tls: []
+  # Gateway ที่ infra/gateway/01-gateway.yaml สร้างไว้
+  parentRef:
+    name: vertex-gateway
+    # เว้นว่าง = namespace เดียวกับ release
+    namespace: ""
+    # ชื่อ listener ใน Gateway — ผูกกับ listener ตัวใดตัวหนึ่งไม่ใช่ทั้ง Gateway
+    sectionName: http
+  # ⚠️ ห้ามใส่ค่าจริงลงไฟล์นี้ — repo เป็น public
+  #    ส่งตอน deploy เหมือน ingress.host เดิม:
+  #      --set httpRoute.hostnames[0]="${{ secrets.INGRESS_HOST }}"
+  #
+  #    ระหว่างช่วงย้ายต้องส่ง "สองชื่อ" — ชื่อที่ cloudflared เขียน Host ทับให้
+  #    กับชื่อที่เบราว์เซอร์เห็นจริง ใส่ทั้งคู่ทำให้ถอด originRequest.httpHostHeader
+  #    ออกจาก cloudflared ได้ในภายหลังโดยไม่ต้องแตะ route
+  #      --set httpRoute.hostnames[1]="${{ secrets.PUBLIC_HOST }}"
+  #
+  #    ว่างไว้แล้วเปิด enabled = helm จะ fail ทันทีพร้อมข้อความบอกเหตุ
+  hostnames: []
+  paths:
+    - type: PathPrefix
+      value: /api/v1/auth
+
 
 # signup/login เป็นงาน CPU ล้วน (bcrypt cost 10 + เซ็น JWT ด้วย RSA)
 # ต้องได้ CPU เต็มคอร์ตอนทำ ไม่งั้นจะโดน throttle
