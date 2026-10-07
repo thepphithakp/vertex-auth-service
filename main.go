@@ -467,14 +467,13 @@ func handleGetMe(c *fiber.Ctx) error {
 	})
 }
 
-func main() {
-	// ต้องเรียกก่อนอะไรทั้งหมด ไม่งั้น slog ใช้ text handler ของ Go
-	// เป็น default แล้ว NewAccessLog ที่เขียนด้วย slog จะไม่ได้เป็น JSON
-	middleware.SetupLogger(os.Getenv("LOG_LEVEL"))
-
-	initDB()
-	initRSAKeys()
-
+// buildApp ประกอบ route ทั้งหมด — แยกจาก main() เพื่อให้เทสต์ยิง HTTP เข้า app
+// จริงได้โดยไม่ต้องเปิด port จริงหรือแตะ log.Fatal(app.Listen(...))
+//
+// ดึงออกมาเป็นขั้นแรกของการ refactor เป็น hexagonal — ยังไม่ย้าย logic
+// ไปไหน แค่ทำให้ route wiring เทสต์ได้ก่อนที่จะแยกชั้นจริง (pin behavior
+// ก่อนขยับโครงสร้าง ตาม Refactoring playbook)
+func buildApp() *fiber.App {
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			// 🔴 ก่อนแก้: ทุก error ตอบ 500 หมด รวมถึง route ที่ไม่ตรงกับ
@@ -550,6 +549,18 @@ func main() {
 	// เพราะ ingress route เฉพาะ prefix /api/v1 เข้ามา
 	app.Get("/metrics", middleware.MetricsHandler())
 
+	return app
+}
+
+func main() {
+	// ต้องเรียกก่อนอะไรทั้งหมด ไม่งั้น slog ใช้ text handler ของ Go
+	// เป็น default แล้ว NewAccessLog ที่เขียนด้วย slog จะไม่ได้เป็น JSON
+	middleware.SetupLogger(os.Getenv("LOG_LEVEL"))
+
+	initDB()
+	initRSAKeys()
+
+	app := buildApp()
 	log.Fatal(app.Listen(":4000"))
 }
 
