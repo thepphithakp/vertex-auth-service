@@ -1,4 +1,4 @@
-package main
+package token
 
 import (
 	"crypto/rand"
@@ -77,10 +77,13 @@ func TestParsePublicKeys(t *testing.T) {
 
 // TestVerificationKeyfunc_Rotation ยืนยันว่าระหว่าง rotate
 // token ที่เซ็นด้วยคีย์เก่าและยังไม่หมดอายุ ยัง verify ผ่าน
+//
+// เดิมตั้งค่าตัวแปร global acceptedPublicKeys แล้วคืนค่าตอนจบ
+// ตอนนี้คีย์เป็นฟิลด์ของ JWTTokenService จึงสร้าง service ขึ้นมาใบหนึ่ง
+// ให้ถือคีย์ชุดที่ต้องการแทน ไม่มี global ให้ต้องกู้คืน
 func TestVerificationKeyfunc_Rotation(t *testing.T) {
 	oldKey, newKey := genKey(t), genKey(t)
-	acceptedPublicKeys = []*rsa.PublicKey{&oldKey.PublicKey, &newKey.PublicKey}
-	t.Cleanup(func() { acceptedPublicKeys = nil; signingKeyID = "" })
+	svc := &JWTTokenService{acceptedKeys: []*rsa.PublicKey{&oldKey.PublicKey, &newKey.PublicKey}}
 
 	makeToken := func(k *rsa.PrivateKey, kid string) string {
 		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
@@ -110,7 +113,7 @@ func TestVerificationKeyfunc_Rotation(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tok, err := jwt.Parse(tc.token, verificationKeyfunc)
+			tok, err := jwt.Parse(tc.token, svc.verificationKeyfunc)
 			got := err == nil && tok.Valid
 			if got != tc.valid {
 				t.Fatalf("valid = %v ต้องการ %v (err=%v)", got, tc.valid, err)
@@ -120,7 +123,7 @@ func TestVerificationKeyfunc_Rotation(t *testing.T) {
 
 	t.Run("คีย์ที่ไม่อยู่ในรายการ", func(t *testing.T) {
 		rogue := genKey(t)
-		if tok, err := jwt.Parse(makeToken(rogue, ""), verificationKeyfunc); err == nil && tok.Valid {
+		if tok, err := jwt.Parse(makeToken(rogue, ""), svc.verificationKeyfunc); err == nil && tok.Valid {
 			t.Fatal("คีย์ที่ไม่ได้ตั้งค่าไว้ต้องถูกปฏิเสธ")
 		}
 	})
@@ -129,14 +132,13 @@ func TestVerificationKeyfunc_Rotation(t *testing.T) {
 // หลัง rotate เสร็จ เอาคีย์เก่าออกแล้ว token เก่าต้องใช้ไม่ได้
 func TestVerificationKeyfunc_AfterRotation(t *testing.T) {
 	oldKey, newKey := genKey(t), genKey(t)
-	acceptedPublicKeys = []*rsa.PublicKey{&newKey.PublicKey}
-	t.Cleanup(func() { acceptedPublicKeys = nil })
+	svc := &JWTTokenService{acceptedKeys: []*rsa.PublicKey{&newKey.PublicKey}}
 
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"sub": uuid.NewString(), "exp": time.Now().Add(time.Hour).Unix(),
 	})
 	s, _ := tok.SignedString(oldKey)
-	if parsed, err := jwt.Parse(s, verificationKeyfunc); err == nil && parsed.Valid {
+	if parsed, err := jwt.Parse(s, svc.verificationKeyfunc); err == nil && parsed.Valid {
 		t.Fatal("token ที่เซ็นด้วยคีย์เก่าต้องใช้ไม่ได้หลังเอาคีย์ออกแล้ว")
 	}
 }
