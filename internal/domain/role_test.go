@@ -1,4 +1,4 @@
-package main
+package domain
 
 import (
 	"testing"
@@ -40,7 +40,7 @@ func TestRolesFromClaims(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := rolesFromClaims(tc.claims)
+			got := RolesFromClaims(tc.claims)
 			if len(got) != len(tc.want) {
 				t.Fatalf("got %v want %v", got, tc.want)
 			}
@@ -55,13 +55,13 @@ func TestRolesFromClaims(t *testing.T) {
 
 func TestHasRole(t *testing.T) {
 	roles := []string{RoleUser, RolePetAdmin}
-	if !hasRole(roles, RolePetAdmin) {
+	if !HasRole(roles, RolePetAdmin) {
 		t.Fatal("ต้องเจอ PET_ADMIN")
 	}
-	if hasRole(roles, RoleSuperAdmin) {
+	if HasRole(roles, RoleSuperAdmin) {
 		t.Fatal("ไม่ควรเจอ SUPER_ADMIN")
 	}
-	if hasRole(nil, RoleUser) {
+	if HasRole(nil, RoleUser) {
 		t.Fatal("slice ว่างต้องไม่เจออะไร")
 	}
 }
