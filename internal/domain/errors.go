@@ -13,9 +13,6 @@ var (
 	// แล้ว PostgreSQL ปฏิเสธ ทำให้ได้ 404 เหมือนกรณีไม่มีแถว
 	ErrUserNotFound = errors.New("ไม่พบผู้ใช้")
 
-	// ErrEmailExists อีเมลนี้มีบัญชีอยู่แล้ว
-	ErrEmailExists = errors.New("อีเมลนี้ถูกใช้แล้ว")
-
 	// ErrOAuthIdentityNotFound ยังไม่มีการผูกบัญชีกับ provider นี้
 	ErrOAuthIdentityNotFound = errors.New("ไม่พบการผูกบัญชีกับ provider นี้")
 

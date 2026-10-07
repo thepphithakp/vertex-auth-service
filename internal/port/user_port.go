@@ -14,7 +14,11 @@ import (
 
 // UserRepository เก็บและอ่านบัญชีผู้ใช้
 type UserRepository interface {
-	// Create สร้างบัญชีใหม่ คืน domain.ErrEmailExists เมื่ออีเมลซ้ำ
+	// Create สร้างบัญชีใหม่ แล้วเขียน CreatedAt/UpdatedAt กลับเข้า user
+	//
+	// ⚠️ คืน error ดิบ ไม่แปลงเป็น "อีเมลซ้ำ" ให้ — เพราะสถานะที่ตอบผู้เรียก
+	//    ขึ้นกับว่าใครเรียก: /signup ตอบ 409 ส่วน /google ตอบ 500
+	//    กับ error ตัวเดียวกัน (พฤติกรรมเดิม) การตัดสินจึงอยู่ที่ชั้น application
 	Create(ctx context.Context, user *domain.User) error
 
 	// FindByEmail หาบัญชีจากอีเมล คืน domain.ErrUserNotFound เมื่อไม่พบ
