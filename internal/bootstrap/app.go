@@ -50,7 +50,7 @@ func NewApp(db *gorm.DB, cfg config.Config) (*fiber.App, error) {
 	// --- input adapter ---
 	authHandler := handler.NewAuthHandler(authService, tokenService)
 	adminHandler := handler.NewAdminHandler(adminService)
-	mw := handler.NewMiddleware(tokenService, userRepo, roleRepo)
+	mw := handler.NewMiddleware(tokenService, authService)
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {

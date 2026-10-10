@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -30,6 +31,31 @@ type GoogleLoginRequest struct {
 	IdToken  string `json:"idToken"`
 	Email    string `json:"email"`
 	FullName string `json:"fullName"`
+}
+
+// userResponse คือรูปแบบ JSON ของ user ใน response ของ /signup, /login,
+// /google — เดิม domain.User มี json tag ติดอยู่กับตัวเองและถูกเสียบลง
+// fiber.Map{"user": result.User} ตรงๆ ย้าย wire format มาที่นี่ไม่ให้
+// domain ต้องรู้จัก JSON เลย รูปแบบเดิมทุกตัวอักษร (PasswordHash ไม่มีอยู่แล้ว
+// เพราะ domain.User เองก็ไม่เคยส่งมันออกไปนอก field นี้)
+type userResponse struct {
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	FullName      string    `json:"fullName"`
+	EmailVerified bool      `json:"emailVerified"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+func toUserResponse(u domain.User) userResponse {
+	return userResponse{
+		ID:            u.ID,
+		Email:         u.Email,
+		FullName:      u.FullName,
+		EmailVerified: u.EmailVerified,
+		CreatedAt:     u.CreatedAt,
+		UpdatedAt:     u.UpdatedAt,
+	}
 }
 
 // AuthHandler รับ request ของการสมัคร เข้าสู่ระบบ และอ่านข้อมูลตัวเอง
@@ -71,7 +97,7 @@ func (h *AuthHandler) Signup(c *fiber.Ctx) error {
 
 	return c.Status(201).JSON(fiber.Map{
 		"token": result.Token,
-		"user":  result.User,
+		"user":  toUserResponse(result.User),
 		"roles": result.Roles,
 	})
 }
@@ -99,7 +125,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"token": result.Token,
-		"user":  result.User,
+		"user":  toUserResponse(result.User),
 		"roles": result.Roles,
 	})
 }
@@ -129,7 +155,7 @@ func (h *AuthHandler) GoogleLogin(c *fiber.Ctx) error {
 		}
 	}
 
-	body := fiber.Map{"token": result.Token, "user": result.User, "roles": result.Roles}
+	body := fiber.Map{"token": result.Token, "user": toUserResponse(result.User), "roles": result.Roles}
 	if result.Created {
 		return c.Status(201).JSON(body)
 	}

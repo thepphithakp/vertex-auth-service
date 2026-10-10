@@ -270,6 +270,35 @@ func (s *AuthService) ListUsers(ctx context.Context) ([]domain.User, error) {
 	return users, nil
 }
 
+// IsBootstrapAdminFallback คือทางผ่านสำรองของ RequireRole สำหรับ token ใบ
+// เดิมที่ยังไม่มี roles claim (token มีอายุ 72 ชั่วโมง ถ้าไม่มีทางนี้
+// ผู้ดูแลระบบจะเข้าหน้า admin ไม่ได้จนกว่า token เดิมจะหมดอายุ — ล็อกตัวเอง
+// ออกจากระบบ) ย้ายมาจาก middleware เดิม — ต้องเป็น business rule ที่
+// application เป็นเจ้าของ ไม่ใช่ adapter เพราะ caller ในอนาคตที่ไม่ใช่
+// Fiber middleware (เช่น gRPC interceptor) ต้องได้กฎเดียวกันนี้ด้วย
+//
+// 🔐 บังคับ email_verified เหมือน reconcileBootstrapAdmin — ถ้าไม่บังคับ
+// คนที่รู้ว่าอีเมลไหนอยู่ในรายการจะสมัครด้วยอีเมลนั้นก่อนเจ้าตัว แล้วเข้า
+// หน้า admin ได้ทันที
+//
+// error ทุกชนิดถือว่า "ไม่ผ่าน" เหมือนเดิม — ทางผ่านสำรองต้องไม่เปิดกว้างขึ้น
+// เพราะอ่านฐานข้อมูลไม่สำเร็จ
+func (s *AuthService) IsBootstrapAdminFallback(ctx context.Context, userID uuid.UUID) bool {
+	user, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return false
+	}
+	if !user.EmailVerified {
+		return false
+	}
+
+	isBootstrap, err := s.roles.IsBootstrapAdmin(ctx, user.Email)
+	if err != nil {
+		return false
+	}
+	return isBootstrap
+}
+
 // issueToken รวมขั้นตอนที่ต้องทำทุกครั้งที่ออก token ไว้ที่เดียว
 // เพื่อไม่ให้ลืม reconcile หรือลืมใส่ roles ในเส้นทางใดเส้นทางหนึ่ง
 func (s *AuthService) issueToken(ctx context.Context, user domain.User) (string, []string, error) {

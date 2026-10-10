@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
+	"vertex-auth-service/internal/application"
 	"vertex-auth-service/internal/domain"
 	"vertex-auth-service/internal/port"
 )
@@ -20,16 +21,20 @@ const (
 //
 // เดิมอ่านตัวแปร global (dbConn, acceptedPublicKeys) ตอนนี้รับ port
 // เข้ามาตอนประกอบที่ internal/bootstrap แทน
+//
+// 🔴 ต่อกับ *application.AuthService ตรงๆ (เหมือน AuthHandler) ไม่ถือ
+// port.UserRepository/RoleRepository เองอีกต่อไป — ทางผ่านสำรองของ
+// RequireRole เป็น business rule ที่ย้ายไปอยู่
+// AuthService.IsBootstrapAdminFallback แล้ว middleware แค่เรียกใช้
+// (เดิมเคยเรียก FindByID + IsBootstrapAdmin ตรงๆ ที่นี่ ซึ่งเป็น business
+// logic ที่ไม่ควรอยู่ใน adapter)
 type Middleware struct {
 	tokens port.TokenService
-	users  port.UserRepository
-	roles  port.RoleRepository
+	auth   *application.AuthService
 }
 
-func NewMiddleware(
-	tokens port.TokenService, users port.UserRepository, roles port.RoleRepository,
-) *Middleware {
-	return &Middleware{tokens: tokens, users: users, roles: roles}
+func NewMiddleware(tokens port.TokenService, auth *application.AuthService) *Middleware {
+	return &Middleware{tokens: tokens, auth: auth}
 }
 
 // RequireAuth ตรวจลายเซ็นและอายุ token แล้วใส่ userId กับ roles ลง context
@@ -82,33 +87,14 @@ func (m *Middleware) RequireRole(want string) fiber.Handler {
 	}
 }
 
-// isBootstrapAdminFromToken คือทางผ่านสำรองของ RequireRole
-//
-// 🔐 บังคับ email_verified เหมือน reconcileBootstrapAdmin — ถ้าไม่บังคับ
-//
-//	คนที่รู้ว่าอีเมลไหนอยู่ในรายการจะสมัครด้วยอีเมลนั้นก่อนเจ้าตัว
-//	แล้วเข้าหน้า admin ได้ทันที
-//
-// error ทุกชนิดถือว่า "ไม่ผ่าน" เหมือนเดิม — ทางผ่านสำรองต้องไม่เปิดกว้างขึ้น
-// เพราะอ่านฐานข้อมูลไม่สำเร็จ
+// isBootstrapAdminFromToken แค่แปลง userId จาก context ให้เป็น uuid แล้ว
+// ส่งต่อให้ AuthService.IsBootstrapAdminFallback ตัดสิน — ตัวนี้เป็น adapter
+// concern (อ่านค่าจาก Fiber locals) ไม่ใช่ business rule เลย
 func (m *Middleware) isBootstrapAdminFromToken(c *fiber.Ctx) bool {
 	userIDStr, _ := c.Locals(localsUserID).(string)
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		return false
 	}
-
-	user, err := m.users.FindByID(c.UserContext(), userID)
-	if err != nil {
-		return false
-	}
-	if !user.EmailVerified {
-		return false
-	}
-
-	isBootstrap, err := m.roles.IsBootstrapAdmin(c.UserContext(), user.Email)
-	if err != nil {
-		return false
-	}
-	return isBootstrap
+	return m.auth.IsBootstrapAdminFallback(c.UserContext(), userID)
 }
